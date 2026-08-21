@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>重機バンニング判定 v1.0</title>
+<style>
+:root{
+  --ink:#1A1A1A; --sub:#666; --line:#CFCFCF; --deck:#F2F2F2; --panel:#FFF;
+  --steel:#1A1A1A; --corten:#1A1A1A; --ok:#1A1A1A; --warn:#1A1A1A; --ng:#1A1A1A;
+  --okbg:#FFF; --warnbg:#EFEFEF; --ngbg:#E4E4E4;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",system-ui,sans-serif;
+  background:var(--deck);color:var(--ink);font-size:14px;line-height:1.65;padding-bottom:74px;
+  -webkit-font-smoothing:antialiased}
+.num{font-family:"SF Mono","Roboto Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+header{background:#1A1A1A;color:#FFF;padding:14px 16px 12px;position:sticky;top:0;z-index:20;border-bottom:1px solid #3A3A3A}
+header h1{font-size:16px;font-weight:700;letter-spacing:.04em}
+header .plate{font-size:10px;color:#9A9A9A;margin-top:3px;line-height:1.5}
+
+nav{position:fixed;bottom:0;left:0;right:0;background:#1A1A1A;display:flex;z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;border:none;color:#8A8A8A;font-size:12px;font-weight:600;padding:15px 0;cursor:pointer;border-top:2px solid transparent;letter-spacing:.02em}
+nav button.on{color:#FFF;border-top-color:#FFF}
+
+main{padding:14px 12px}
+.tab{display:none}.tab.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:12px}
+.card h2{font-size:12px;font-weight:700;color:var(--ink);letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.card h2::before{content:"";width:7px;height:7px;background:#1A1A1A;flex:none}
+details summary{font-size:12px;font-weight:700;letter-spacing:.08em;cursor:pointer;padding:2px 0;list-style-position:inside}
+label{display:block;font-size:11px;font-weight:600;color:var(--sub);margin:10px 0 4px;letter-spacing:.03em}
+input,select{width:100%;padding:11px 10px;border:1px solid var(--line);border-radius:5px;font-size:16px;background:#FAFAFA;color:var(--ink)}
+input:focus,select:focus{outline:2px solid #1A1A1A;border-color:#1A1A1A}
+input.err{border:2px solid #1A1A1A;background:#E4E4E4}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.btn{width:100%;padding:14px;border:none;border-radius:5px;background:#1A1A1A;color:#FFF;font-size:15px;font-weight:700;margin-top:14px;cursor:pointer;letter-spacing:.06em}
+.btn:disabled{background:#BBB}
+.btn.sub{background:#555;font-size:13px;padding:11px}
+.btn.ghost{background:#FFF;color:#1A1A1A;border:1px solid #1A1A1A;font-size:13px;padding:11px}
+.btn.danger{background:#FFF;color:#1A1A1A;border:2px solid #1A1A1A;font-size:13px;padding:11px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border:1px solid var(--line);padding:8px 5px;text-align:center}
+th{background:#EDEDED;font-size:11px;color:#444;font-weight:600}
+td.ok{background:#FFF;color:#1A1A1A;font-weight:800;font-size:15px}
+td.wr{background:#E4E4E4;color:#1A1A1A;font-weight:800;font-size:15px}
+td.ng{background:#1A1A1A;color:#FFF;font-weight:800;font-size:15px}
+
+.reason{font-size:12.5px;line-height:1.75;margin-top:10px}
+.reason div{padding:9px 11px;border-radius:4px;margin-top:6px;border-left:4px solid}
+.r-ng{background:#1A1A1A;color:#FFF;border-color:#000}
+.r-ng b{color:#FFF}
+.r-wr{background:#E9E9E9;border-color:#1A1A1A}
+.r-ok{background:#FFF;border-color:#1A1A1A;outline:1px solid var(--line)}
+.r-in{background:#F7F7F7;border-color:#AAA;color:#444}
+.reason b{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+.verdict{padding:14px;border-radius:4px;margin-top:12px;font-size:14px;line-height:1.8;border:1px solid var(--line)}
+.verdict .big{font-size:20px;font-weight:800;letter-spacing:.02em}
+
+.bay{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin:10px 0 4px}
+.bay .cell{aspect-ratio:.72;border:1px dashed var(--line);border-radius:3px;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#FAFAFA;font-weight:700;color:#888}
+.baylabel{display:flex;justify-content:space-between;font-size:10px;color:var(--sub)}
+.cglabel{font-size:11px;color:var(--sub);margin-top:8px}
+.cgbar{height:14px;background:#EDEDED;border:1px solid var(--line);border-radius:7px;position:relative;margin-top:4px}
+.cgbar .zone{position:absolute;top:0;bottom:0;background:#CFCFCF}
+.cgbar .pin{position:absolute;top:-4px;width:4px;height:22px;background:#1A1A1A;border-radius:2px;transition:left .2s}
+.cargorow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #EDEDED;font-size:12.5px;gap:6px}
+.cargorow .sw{width:22px;height:22px;border-radius:4px;flex:none;color:#FFF;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.cargorow .del{background:none;border:none;color:#1A1A1A;font-size:16px;cursor:pointer;padding:4px}
+.mrow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #EDEDED;font-size:13px;gap:8px}
+.mrow .acts{display:flex;gap:6px;flex:none}
+.mrow .acts button{border:1px solid var(--line);background:#FFF;border-radius:4px;padding:6px 10px;font-size:11px;cursor:pointer}
+.mrow .acts .d{border-color:#1A1A1A;font-weight:700}
+.badge{font-size:10px;background:#1A1A1A;color:#FFF;border-radius:3px;padding:2px 7px;letter-spacing:.03em}
+.chip{font-size:10px;padding:2px 8px;border-radius:3px;color:#FFF;font-weight:700}
+
+pre{background:#1A1A1A;color:#E8E8E8;font-size:11.5px;padding:14px;border-radius:5px;overflow-x:auto;line-height:1.7;font-family:ui-monospace,monospace;white-space:pre-wrap}
+.note{font-size:11px;color:var(--sub);line-height:1.7;margin-top:8px}
+.copied{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:#1A1A1A;color:#FFF;padding:10px 20px;border-radius:4px;font-size:13px;opacity:0;transition:.3s;pointer-events:none;z-index:40}
+.copied.show{opacity:1}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;overflow-y:auto;padding:20px 12px 40px}
+.modal.on{display:block}
+.modal .inner{background:#FFF;border-radius:6px;padding:16px;max-width:560px;margin:0 auto}
+.posthead{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:10px;border-top:2px solid var(--line)}
+.posthead b{font-size:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>重機バンニング判定</h1>
+  <div class="plate num">v2.0</div>
+</header>
+
+<main>
+
+<!-- ①判定 -->
+<section class="tab on" id="tab0">
+  <div class="card">
+    <details><summary>実測ガイド(現場モード)</summary>
+    <label>機種タイプ</label>
+    <select id="mgType" onchange="renderGuide()">
+      <option value="ex">油圧ショベル</option>
+      <option value="dz">ブルドーザー</option>
+      <option value="wl">ホイールローダー</option>
+      <option value="fk">フォークリフト</option>
+      <option value="rl">ローラー(締固め)</option>
+      <option value="cr">ミニクローラークレーン/カニクレーン</option>
+      <option value="aw">高所作業車</option>
+      <option value="cd">クローラーダンプ(不整地運搬車)</option>
+      <option value="tr">トラクター(農機)</option>
+    </select>
+    <div class="reason" id="mgList" style="margin-top:8px"></div>
+        <div class="note">測定は2人1組・輸送姿勢に固定してから。数値は下の判定欄へ入力。</div></details>
+  </div>
+  <div class="card">
+    <h2>機械と輸送姿勢</h2>
+    <label>機種</label>
+    <select id="mSel" onchange="onMachine()"></select>
+    <label>荷姿</label>
+    <select id="pSel" onchange="onPosture()"></select>
+    <div class="grid3">
+      <div><label>全長 L (mm)</label><input type="number" id="jL" class="num"></div>
+      <div><label>全幅 W (mm)</label><input type="number" id="jW" class="num"></div>
+      <div><label>全高 H (mm)</label><input type="number" id="jH" class="num"></div>
+    </div>
+    <div class="grid3">
+      <div><label>重量 (kg)</label><input type="number" id="jWT" class="num"></div>
+      <div style="grid-column:span 2"><label>接地タイプ</label>
+        <select id="jGT" onchange="onGndType()">
+          <option value="crawler">履帯(シュー幅×接地長×2本)</option>
+          <option value="tire">タイヤ(輪数×輪接地面積)</option>
+          <option value="none">接地圧を判定しない</option>
+        </select></div>
+    </div>
+    <div class="grid2">
+      <div id="gndA"><label>シュー幅 (mm)</label><input type="number" id="jSW" class="num"></div>
+      <div id="gndB"><label>接地長 (mm)</label><input type="number" id="jSL" class="num"></div>
+    </div>
+    <button class="btn" onclick="judge()">コンテナ適合を判定</button>
+    <button class="btn ghost" id="recallBtn" style="display:none" onclick="recallLast()">この機械の前回実測値を呼出し</button>
+  </div>
+  <div class="card" id="resultCard" style="display:none">
+    <h2>判定マトリクス</h2>
+    <table id="mx"></table>
+    <div class="reason" id="reasons"></div>
+  </div>
+</section>
+
+<!-- ②損益 -->
+<section class="tab" id="tab1">
+  <div class="card">
+    <h2>分解 vs 特殊コンテナ 損益分岐</h2>
+    <div class="grid2">
+      <div><label>海上運賃O/F・標準 (万円)</label><input type="number" id="c1" class="num" value="50"></div>
+      <div><label>海上運賃O/F・FR/OT+OOG割増 (万円)</label><input type="number" id="c2" class="num" value="200"></div>
+      <div><label>分解工賃 (万円)</label><input type="number" id="c3" class="num" value="45"></div>
+      <div><label>現地組立工賃 (万円)</label><input type="number" id="c4" class="num" value="35"></div>
+      <div><label>遅延日数 (日)</label><input type="number" id="c5" class="num" value="0"></div>
+      <div><label>保管料・デマレージ等 (万円/日)</label><input type="number" id="c6" class="num" value="1"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--ink)">
+      <input type="checkbox" id="noAsm" style="width:20px;height:20px"> 仕向地に再組立設備なし(分解案を選択不可にする)
+    </label>
+    <button class="btn" onclick="pl()">総額を比較</button>
+    <div id="plOut"></div>
+  </div>
+</section>
+
+<!-- ③混載 -->
+<section class="tab" id="tab2">
+  <div class="card">
+    <h2>相積みする貨物</h2>
+    <div id="cargoList"></div>
+    <div class="grid3" style="margin-top:8px">
+      <div style="grid-column:span 3"><label>貨物名(会社名を含める)</label><input id="cgName" placeholder="例:A社 PC200分解体"></div>
+      <div><label>L (mm) 任意</label><input type="number" id="cgL" class="num"></div>
+      <div><label>W (mm) 任意</label><input type="number" id="cgW" class="num"></div>
+      <div><label>H (mm) 任意</label><input type="number" id="cgH" class="num"></div>
+      <div><label>重量 (kg)</label><input type="number" id="cgWt" class="num"></div>
+      <div><label>デバン順</label><input type="number" id="cgOrd" class="num" min="1"></div>
+    </div>
+    <button class="btn ghost" style="margin-top:10px" onclick="addCargo()">貨物を追加</button>
+  </div>
+  <div class="card">
+    <h2>積付(コンテナを選択)</h2>
+    <select id="mixCont" onchange="drawBay()">
+      <option value="0">20DC(内寸5,898mm / 28,200kg)</option>
+      <option value="1">40DC(内寸12,032mm / 26,700kg)</option>
+      <option value="2" selected>40HC(内寸12,032mm / 26,500kg)</option>
+    </select>
+    <label>積み付ける貨物を選んでから区画をタップ(再タップで解除)</label>
+    <select id="cargoSel"></select>
+    <div class="bay" id="bay"></div>
+    <div class="baylabel"><span>◀ 妻側(奥)</span><span>ドア側 ▶</span></div>
+    <div class="cglabel" id="cgLimLbl">重心位置</div>
+    <div class="cgbar"><div class="zone" id="cgZone"></div><div class="pin" id="cgPin" style="left:50%"></div></div>
+    <div class="cglabel">側面ビュー(左=奥/右=扉。高さは貨物H入力時のみ実比率)</div>
+    <div id="sideView" style="margin-top:4px"></div>
+    <div class="reason" id="mixOut"></div>
+    <button class="btn sub" onclick="clearBay()">積付をクリア</button>
+  </div>
+  <div class="card">
+    <h2>バンニング手順(業者指示)</h2>
+    <div class="reason" id="seqOut" style="margin-top:0"><div class="r-in">積み付けると、妻側から順のバンニング手順を自動生成します。</div></div>
+  </div>
+</section>
+
+<!-- ④レポート -->
+<section class="tab" id="tab3">
+  <div class="card">
+    <h2>船積情報</h2>
+    <div class="grid2">
+      <div><label>船社</label><input id="siLine" placeholder="例:ONE"></div>
+      <div><label>仕向港(POD)</label><input id="siPOD" placeholder="例:LAEM CHABANG"></div>
+      <div><label>荷受人(Consignee)</label><input id="siCnee"></div>
+      <div><label>乙仲(フォワーダー)</label><input id="siFwd"></div>
+      <div><label>乙仲TEL</label><div style="display:flex;gap:6px"><input id="siTel" type="tel" class="num" style="flex:1"><button class="btn ghost" style="margin:0;width:64px;padding:8px" onclick="if(siTel.value)location.href='tel:'+siTel.value">発信</button></div></div>
+      <div><label>書類カット日</label><input id="siDoc" type="date" class="num"></div>
+      <div><label>船名 / Voyage</label><input id="siVsl" placeholder="例:XX MARU / 026E"></div>
+      <div><label>ブッキングNo</label><input id="siBkg" class="num"></div>
+      <div><label>CYカット日</label><input id="siCut" type="date" class="num"></div>
+      <div><label>コンテナNo</label><input id="siCntr" class="num" placeholder="例:ABCU1234567"></div>
+      <div><label>シールNo</label><input id="siSeal" class="num"></div>
+    </div>
+    <label style="margin-top:14px;color:var(--steel);font-weight:700">実機値での再判定(CSCプレートから転記)</label>
+    <div class="grid3">
+      <div><label>型式</label><select id="siType"><option value="0">20DC</option><option value="1">40DC</option><option value="2" selected>40HC</option><option value="3">40OT</option><option value="4">40FR</option></select></div>
+      <div><label>Max Gross (kg)</label><input type="number" id="siMG" class="num" placeholder="例:32500"></div>
+      <div><label>タレ/自重 (kg)</label><input type="number" id="siTare" class="num" placeholder="例:3900"></div>
+    </div>
+    <div class="grid2">
+      <div><label>ダンネージ・ラッシング材 (kg)</label><input type="number" id="siDun" class="num" placeholder="例:250"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn ghost" style="margin:0" onclick="checkActual()">実機値チェック</button></div>
+    </div>
+    <div class="reason" id="siOut"></div>
+  </div>
+  <div class="card">
+    <h2>バンニングレポート</h2>
+    <button class="btn" style="margin:4px 0 10px" onclick="copyRep()">レポートをコピー</button>
+    <pre id="rep">判定・損益・積付を実行すると、ここにバンニングレポートが生成されます。</pre>
+  </div>
+</section>
+
+<!-- ⑤設定(マスタ編集) -->
+<section class="tab" id="tab4">
+  <div class="card">
+    <h2>機種マスタ</h2>
+    <button class="btn" style="margin-top:4px" onclick="editMachine(-1)">機種を登録</button>
+    <div class="note">複製→編集で自社仕様に。</div>
+    <div id="mList"></div>
+  </div>
+</section>
+
+</main>
+
+<nav>
+  <button class="on" onclick="sw(0,this)">実測判定</button>
+  <button onclick="sw(1,this)">損益</button>
+  <button onclick="sw(2,this)">積付</button>
+  <button onclick="sw(3,this)">船積</button>
+  <button onclick="sw(4,this)">設定</button>
+</nav>
+<div class="copied" id="toast">コピーしました</div>
+
+<!-- 機械編集モーダル -->
+<div class="modal" id="mModal">
+  <div class="inner">
+    <h2 style="font-size:15px;color:var(--steel);margin-bottom:4px" id="mmTitle">機械を登録</h2>
+    <label>メーカー(任意・空欄は「自社登録」)</label><input id="mmMaker" placeholder="例:コマツ">
+    <label>機種名</label><input id="mmName" placeholder="例:PC200-8(2018年式・シュー600)">
+    <div class="grid2">
+      <div><label>分解費 概算(万円)</label><input type="number" id="mmDis" class="num"></div>
+      <div><label>再組立費 概算(万円)</label><input type="number" id="mmAsm" class="num"></div>
+    </div>
+    <div id="mmPosts"></div>
+    <button class="btn ghost" onclick="addPostRow()">荷姿を追加(最大3)</button>
+    <button class="btn" onclick="saveMachine()">保存</button>
+    <button class="btn danger" id="mmDel" onclick="deleteMachine()">この機種を削除</button>
+    <button class="btn sub" onclick="closeModal()">閉じる</button>
+  </div>
+</div>
+
+<script>
+/* ===== コンテナマスタ(ISO標準値・個体差はCSCプレートで確認) ===== */
+const CONT=[
+ {n:"20DC",L:5898,W:2352,H:2393,dW:2340,dH:2280,pl:28200,open:false,fr:false},
+ {n:"40DC",L:12032,W:2352,H:2393,dW:2340,dH:2280,pl:26700,open:false,fr:false},
+ {n:"40HC",L:12032,W:2352,H:2698,dW:2340,dH:2585,pl:26500,open:false,fr:false},
+ {n:"40OT",L:12028,W:2352,H:2348,dW:2340,dH:2280,pl:26000,open:true,fr:false},
+ {n:"40FR",L:12080,W:2438,H:2135,dW:0,dH:0,pl:39000,open:false,fr:true}
+];
+const GP_LIMIT=3.0;      // 接地圧閾値 t/m²(実務目安・船社基準で調整)
+const CG_RATIO=0.05;     // 重心許容 ±内寸長5%
+
+/* ===== プリセット(カタログ参考値・個体差あり・実測必須/削除不可・複製可) ===== */
+const PRESETS=[
+ /* コマツ */
+ {id:"km1",maker:"コマツ",name:"PC30MR(3t)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:4350,W:1740,H:2570,wt:3200,gt:"crawler",sw:300,sl:1600}]},
+ {id:"km2",maker:"コマツ",name:"PC78US(8t)",dis:25,asm:20,preset:true,post:[
+   {lb:"そのまま(参考)",L:6260,W:2320,H:2790,wt:7800,gt:"crawler",sw:450,sl:2100},
+   {lb:"アーム下げ(参考)",L:6600,W:2320,H:2550,wt:7800,gt:"crawler",sw:450,sl:2100}]},
+ {id:"km3",maker:"コマツ",name:"PC128US(13t)",dis:35,asm:28,preset:true,post:[{lb:"そのまま(参考)",L:7250,W:2490,H:2800,wt:13000,gt:"crawler",sw:500,sl:2700}]},
+ {id:"km4",maker:"コマツ",name:"PC200(20t)",dis:45,asm:35,preset:true,post:[
+   {lb:"そのまま(参考)",L:9430,W:2800,H:3040,wt:20000,gt:"crawler",sw:600,sl:3270},
+   {lb:"CW+アーム分解(参考)",L:7200,W:2320,H:2550,wt:16000,gt:"crawler",sw:600,sl:3270}]},
+ {id:"km5",maker:"コマツ",name:"PC300(30t)",dis:60,asm:50,preset:true,post:[{lb:"そのまま(参考)",L:10900,W:3190,H:3290,wt:30500,gt:"crawler",sw:600,sl:4030}]},
+ {id:"km6",maker:"コマツ",name:"D65PX(20t ドーザ)",dis:40,asm:30,preset:true,post:[
+   {lb:"ブレード付(参考)",L:6270,W:3970,H:3090,wt:20800,gt:"crawler",sw:915,sl:3260},
+   {lb:"ブレード脱着(参考)",L:5500,W:2530,H:3090,wt:18500,gt:"crawler",sw:915,sl:3260}]},
+ {id:"km7",maker:"コマツ",name:"WA200(11t ホイールローダ)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:7150,W:2530,H:3090,wt:11300,gt:"tire",sw:4,sl:1200}]},
+ /* CAT */
+ {id:"ct1",maker:"CAT",name:"305.5(5t)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:5480,W:1980,H:2590,wt:5300,gt:"crawler",sw:400,sl:2000}]},
+ {id:"ct2",maker:"CAT",name:"320(20t)",dis:45,asm:35,preset:true,post:[
+   {lb:"そのまま(参考)",L:9530,W:2800,H:3010,wt:20500,gt:"crawler",sw:600,sl:3270},
+   {lb:"CW+アーム分解(参考)",L:7300,W:2320,H:2550,wt:16500,gt:"crawler",sw:600,sl:3270}]},
+ {id:"ct3",maker:"CAT",name:"330(30t)",dis:60,asm:50,preset:true,post:[{lb:"そのまま(参考)",L:10700,W:3190,H:3220,wt:30300,gt:"crawler",sw:600,sl:3980}]},
+ {id:"ct4",maker:"CAT",name:"950(19t ホイールローダ)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:8100,W:2980,H:3470,wt:18600,gt:"tire",sw:4,sl:1800}]},
+ /* 日立 */
+ {id:"ht1",maker:"日立",name:"ZX75US(7.5t)",dis:25,asm:20,preset:true,post:[{lb:"そのまま(参考)",L:6120,W:2320,H:2790,wt:7600,gt:"crawler",sw:450,sl:2100}]},
+ {id:"ht2",maker:"日立",name:"ZX200(20t)",dis:45,asm:35,preset:true,post:[
+   {lb:"そのまま(参考)",L:9510,W:2860,H:3040,wt:20100,gt:"crawler",sw:600,sl:3370},
+   {lb:"CW+アーム分解(参考)",L:7300,W:2320,H:2550,wt:16100,gt:"crawler",sw:600,sl:3370}]},
+ {id:"ht3",maker:"日立",name:"ZX350(35t)",dis:65,asm:55,preset:true,post:[{lb:"そのまま(参考)",L:11140,W:3190,H:3220,wt:33700,gt:"crawler",sw:600,sl:4250}]},
+ /* コベルコ */
+ {id:"kb1",maker:"コベルコ",name:"SK75SR(7.5t)",dis:25,asm:20,preset:true,post:[{lb:"そのまま(参考)",L:6150,W:2320,H:2800,wt:7600,gt:"crawler",sw:450,sl:2100}]},
+ {id:"kb2",maker:"コベルコ",name:"SK200(20t)",dis:45,asm:35,preset:true,post:[
+   {lb:"そのまま(参考)",L:9500,W:2800,H:3040,wt:20300,gt:"crawler",sw:600,sl:3300},
+   {lb:"CW+アーム分解(参考)",L:7300,W:2320,H:2550,wt:16300,gt:"crawler",sw:600,sl:3300}]},
+ /* ヤンマー・クボタ */
+ {id:"yn1",maker:"ヤンマー/クボタ",name:"ViO30(3t)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:4340,W:1550,H:2460,wt:3100,gt:"crawler",sw:300,sl:1580}]},
+ {id:"yn2",maker:"ヤンマー/クボタ",name:"KX080(8t)",dis:25,asm:20,preset:true,post:[{lb:"そのまま(参考)",L:6300,W:2200,H:2570,wt:8200,gt:"crawler",sw:450,sl:2050}]},
+ /* ローラー */
+ {id:"rl1",maker:"ローラー",name:"コンバインド3〜4t級(酒井TW354等)",dis:0,asm:0,preset:true,post:[{lb:"ROPS立(参考)",L:2700,W:1480,H:2550,wt:3800,gt:"none",sw:0,sl:0},{lb:"ROPS倒し(参考)",L:2700,W:1480,H:2050,wt:3800,gt:"none",sw:0,sl:0}]},
+ {id:"rl2",maker:"ローラー",name:"土工振動10〜12t級(酒井SV512等)",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:5600,W:2300,H:3000,wt:11500,gt:"none",sw:0,sl:0}]},
+ {id:"rl3",maker:"ローラー",name:"タイヤローラー8〜10t級",dis:0,asm:0,preset:true,post:[{lb:"そのまま(参考)",L:4750,W:2100,H:2900,wt:9000,gt:"tire",sw:8,sl:400}]},
+ /* クレーン */
+ {id:"cr1",maker:"クレーン",name:"カニクレーン2.9t吊級(前田MC285等)",dis:0,asm:0,preset:true,post:[{lb:"完全格納(参考)",L:2700,W:600,H:1400,wt:1900,gt:"crawler",sw:180,sl:1050}]},
+ {id:"cr2",maker:"クレーン",name:"カニクレーン3.8t吊級(前田MC405等)",dis:0,asm:0,preset:true,post:[{lb:"完全格納(参考)",L:4300,W:1280,H:1780,wt:3850,gt:"crawler",sw:230,sl:1400}]},
+ /* 高所作業車 */
+ {id:"aw1",maker:"高所作業車",name:"シザース6m電動級",dis:0,asm:0,preset:true,post:[{lb:"完全格納・手すり含む(参考)",L:1830,W:810,H:1990,wt:1450,gt:"tire",sw:4,sl:150}]},
+ {id:"aw2",maker:"高所作業車",name:"クローラーブーム12m級",dis:0,asm:0,preset:true,post:[{lb:"完全格納(参考)",L:4900,W:1990,H:2000,wt:4500,gt:"crawler",sw:300,sl:1800}]},
+ /* クローラーダンプ */
+ {id:"cd1",maker:"クローラーダンプ",name:"3.5t積級(諸岡MST-800等)",dis:0,asm:0,preset:true,post:[{lb:"空荷(参考)",L:4600,W:2200,H:2750,wt:6500,gt:"crawler",sw:600,sl:2400}]},
+ {id:"cd2",maker:"クローラーダンプ",name:"2t積級(諸岡MST-600等)",dis:0,asm:0,preset:true,post:[{lb:"空荷(参考)",L:3900,W:2000,H:2600,wt:4500,gt:"crawler",sw:500,sl:2100}]},
+ /* 農機 */
+ {id:"tr1",maker:"農機",name:"トラクター30〜50PS級",dis:0,asm:0,preset:true,post:[{lb:"ROPS立・作業機なし(参考)",L:3300,W:1600,H:2450,wt:1700,gt:"tire",sw:4,sl:600},{lb:"ROPS倒し(参考)",L:3300,W:1600,H:1900,wt:1700,gt:"tire",sw:4,sl:600}]},
+ /* フォークリフト */
+ {id:"fk1",maker:"フォークリフト",name:"2.5tクラス(参考)",dis:0,asm:0,preset:true,post:[{lb:"マスト標準・フォーク付(参考)",L:3700,W:1230,H:2150,wt:4500,gt:"tire",sw:4,sl:600}]},
+ {id:"fk2",maker:"フォークリフト",name:"3.5tクラス(参考)",dis:0,asm:0,preset:true,post:[{lb:"マスト標準・フォーク付(参考)",L:4100,W:1400,H:2270,wt:6000,gt:"tire",sw:4,sl:800}]}
+];
+let userMachines=[]; // 保存対象
+let cargos=[];       // 混載貨物(保存対象)
+let bayState=Array(10).fill(0); // 区画ごとの cargo index(1始まり)/0=空
+let lastJudge=null,lastPL=null;
+const CG_COLORS=["#1A1A1A","#4D4D4D","#7A7A7A","#2E2E2E","#5F5F5F","#8C8C8C"];
+
+/* ===== 保存(Claude環境=window.storage / 通常ブラウザ=localStorage / どちらも不可ならメモリのみ) ===== */
+async function store(k,v){
+  const s=JSON.stringify(v);
+  try{await window.storage.set(k,s);return}catch(e){}
+  try{localStorage.setItem(k,s)}catch(e){}
+}
+async function load(k){
+  try{const r=await window.storage.get(k);if(r)return JSON.parse(r.value)}catch(e){}
+  try{const s=localStorage.getItem(k);return s?JSON.parse(s):null}catch(e){}
+  return null;
+}
+async function init(){
+  userMachines=(await load("vanning-machines"))||[];
+  cargos=(await load("vanning-cargos"))||[
+    {n:"A社 PC200分解体",wt:16000,ord:1,vol:42.6,dH:2550},{n:"B社 アタッチメント",wt:4000,ord:2,vol:3.5,dH:1200},{n:"C社 部品箱",wt:2000,ord:3,vol:1.8,dH:1000}];
+  renderMachineSel();renderMList();renderCargos();drawBay();loadCase();
+  renderGuide();await loadMeasured();await loadPassLog();updateRecallBtn();
+}
+function allMachines(){return [...PRESETS,...userMachines]}
+
+/* ===== タブ ===== */
+function sw(i,btn){
+  document.querySelectorAll('.tab').forEach((t,x)=>t.classList.toggle('on',x===i));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  if(i===3)buildReport();
+}
+
+/* ===== v1.4 実測ガイド ===== */
+const GUIDE={
+ ex:[["全高","キャブ頂点ではなく最突起(手すり・アンテナ・パトランプ含む)。アーム姿勢を固定してから"],
+     ["全幅","シュー外-外。ステップ・ミラーの張出しがあれば広い方"],
+     ["全長","カウンターウェイト後端〜バケット/アーム先端。旋回体の向きを荷姿に固定"],
+     ["重量","仕様書値+残燃料・アタッチメント分。不明なら仕様書値+5%見込み"],
+     ["シュー幅・接地長","接地長は接地面の実長。湿地シュー・幅広シューは必ず実測"]],
+ dz:[["全高","排気管・ROPS・リッパー上端の最も高い点"],
+     ["全幅","排土板(ブレード)外-外。ブレード脱着予定なら車体幅も別に記録"],
+     ["全長","ブレード前端〜リッパー後端"],
+     ["重量","リッパー・ブレード込みか分解かで分けて記録"],
+     ["シュー幅・接地長","湿地シューは幅が大きいので必ず実測"]],
+ wl:[["全高","バケット接地・アーム最下げ時。排気管・ヘッドガードの突起確認"],
+     ["全幅","タイヤ外-外またはバケット幅の広い方"],
+     ["全長","バケット刃先〜後端カウンターウェイト。アーティキュレートは直進状態で"],
+     ["重量","バケット・作業具込みか明記"],
+     ["接地","輪数と1輪の接地面積(接地痕の縦×横で概算)"]],
+ fk:[["全高","マスト全下げ・ヘッドガード上端。2段/3段マストで格納高が違うので必ず実測"],
+     ["全幅","タイヤ外-外。ダブルタイヤ・サイドシフトの張出し確認"],
+     ["全長","フォーク先端〜後端。フォーク外して別積みなら車体長も記録"],
+     ["重量","車両重量(カウンターウェイト込)。銘板で確認"],
+     ["接地","前輪に荷重が寄る。前2輪の接地面積で見る"]],
+ rl:[["全高","ROPS/キャノピー上端。可倒式ROPSは倒した状態で測り直す"],
+     ["全幅","ドラム幅と後輪(タイヤ)外-外の広い方"],
+     ["全長","前ドラム前端〜後端。散水タンク・ステップの突出確認"],
+     ["重量","散水タンク空の状態で。銘板の運転質量と区別"],
+     ["接地","ドラム線接地は接地圧が読みにくい→敷板前提が安全"]],
+ cr:[["全高","ブーム完全格納・フック格納状態の最上端"],
+     ["全幅","アウトリガー完全格納幅。クローラー拡縮式は縮小状態で"],
+     ["全長","ブーム先端〜後端(フック振れ止め固定後)"],
+     ["重量","フック・ワイヤ込み。銘板確認"],
+     ["注意","ブームは必ず固縛してから測る。作動油の液漏れ養生"]],
+ aw:[["全高","ブーム/シザース完全格納・バスケット手すり上端(手すり可倒なら倒して)"],
+     ["全幅","バスケット幅とアウトリガー格納幅の広い方"],
+     ["全長","バスケット先端〜後端"],
+     ["重量","銘板の車両重量。バッテリー式は鉛電池で重いので必ず銘板"],
+     ["注意","バスケット・ブームの固縛を先に。自走は微速前提で段取り"]],
+ cd:[["全高","荷台・ゲート・排気管の最上端。ダンプ機構は完全下げ"],
+     ["全幅","荷台外-外とクローラー外-外の広い方"],
+     ["全長","荷台前端(ゲート)〜後端"],
+     ["重量","空荷・銘板の機械質量で"],
+     ["シュー幅・接地長","ゴムクローラーの幅×接地長×2"]],
+ tr:[["全高","ROPS/キャビン上端。可倒式ROPSは倒した状態で。マフラー突出確認"],
+     ["全幅","後輪外-外。作業機(ロータリー等)付きなら広い方。作業機は脱着し別積み推奨"],
+     ["全長","フロントウェイト前端〜作業機後端(3点リンク格納状態)"],
+     ["重量","本体+ウェイト+作業機を分けて記録"],
+     ["接地","後輪2輪が主。タイヤ接地痕で概算"]]};
+function renderGuide(){
+  const t=document.getElementById('mgType').value;
+  document.getElementById('mgList').innerHTML=GUIDE[t].map((g,i)=>
+    `<div class="r-in"><b>${i+1}. ${g[0]}</b>:${g[1]}</div>`).join('');
+}
+/* ===== v1.4 前回実測値 ===== */
+let lastMeasured={};
+async function loadMeasured(){lastMeasured=(await load("vanning-measured"))||{}}
+function machineKey(){const i=+document.getElementById('mSel').value;return i>=0?allMachines()[i].name:null}
+function updateRecallBtn(){
+  const k=machineKey();
+  document.getElementById('recallBtn').style.display=(k&&lastMeasured[k])?'block':'none';
+}
+function recallLast(){
+  const k=machineKey();if(!k||!lastMeasured[k])return;
+  const o=lastMeasured[k];
+  jL.value=o.L;jW.value=o.W;jH.value=o.H;jWT.value=o.wt;jSW.value=o.sw||'';jSL.value=o.sl||'';
+}
+/* ===== v1.4 通過実績の記録・集計 ===== */
+let passLog=[];
+async function loadPassLog(){passLog=(await load("vanning-passlog"))||[]}
+function logResult(res){
+  if(!lastJudge)return;
+  passLog.push({d:new Date().toISOString().slice(0,10),m:lastJudge.name,cl:lastJudge.minClear??null,res});
+  store("vanning-passlog",passLog);renderPassStats();
+}
+function renderPassStats(){
+  const el=document.getElementById('passStats');if(!el)return;
+  const band=(c)=>c==null?'?':c>50?'緑':c>=20?'黄':'赤';
+  const agg={};passLog.forEach(r=>{const b=band(r.cl);agg[b]=agg[b]||{ok:0,ng:0};agg[b][r.res==='ok'?'ok':'ng']++});
+  el.innerHTML=passLog.length?
+   `<div class="r-in">自社実績(${passLog.length}件):`+
+   ['緑','黄','赤'].filter(b=>agg[b]).map(b=>` [${b}帯]通過${agg[b].ok}/中止${agg[b].ng}`).join('')+
+   `</div>`:'';
+}
+function renderMachineSel(){
+  const s=document.getElementById('mSel');
+  const all=allMachines();
+  const groups={};
+  all.forEach((m,i)=>{const g=m.preset?(m.maker||'その他'):'自社登録';(groups[g]=groups[g]||[]).push([i,m.name])});
+  let html='';
+  Object.keys(groups).sort((a,b)=>(a==='自社登録'?-1:b==='自社登録'?1:0)).forEach(g=>{
+    html+='<optgroup label="'+g+'">'+groups[g].map(([i,n])=>'<option value="'+i+'">'+n+'</option>').join('')+'</optgroup>';
+  });
+  html+='<option value="-1">手入力(マスタ未登録)</option>';
+  const prev=s.value;
+  s.innerHTML=html;
+  const def=userMachines.length?String(PRESETS.length):"3"; // 自社登録優先、なければPC200
+  s.value=(prev&&prev!=='')?prev:def;
+  if(s.selectedIndex<0)s.value=def;
+  onMachine();
+}
+function onMachine(){
+  const i=+document.getElementById('mSel').value,p=document.getElementById('pSel');
+  updateRecallBtn();
+  if(i<0){p.innerHTML='<option>手入力</option>';['jL','jW','jH','jWT','jSW','jSL'].forEach(id=>document.getElementById(id).value='');return}
+  p.innerHTML=allMachines()[i].post.map((o,x)=>`<option value="${x}">${o.lb}</option>`).join('');
+  onPosture();
+}
+function onPosture(){
+  const i=+document.getElementById('mSel').value;if(i<0)return;
+  const o=allMachines()[i].post[+document.getElementById('pSel').value||0];
+  jL.value=o.L;jW.value=o.W;jH.value=o.H;jWT.value=o.wt;jSW.value=o.sw||'';jSL.value=o.sl||'';
+  document.getElementById('jGT').value=o.gt||'crawler';onGndType();
+}
+function onGndType(){
+  const t=document.getElementById('jGT').value;
+  const a=document.querySelector('#gndA label'),b=document.querySelector('#gndB label');
+  if(t==='tire'){a.textContent='輪数';b.textContent='輪接地面積(cm²)'}
+  else{a.textContent='シュー幅 (mm)';b.textContent='接地長 (mm)'}
+  document.getElementById('gndA').style.opacity=t==='none'?.35:1;
+  document.getElementById('gndB').style.opacity=t==='none'?.35:1;
+}
+function judge(){
+  // 入力検証(エッジケース1)
+  let ok=true;
+  ['jL','jW','jH','jWT'].forEach(id=>{const e=document.getElementById(id);
+    if(!+e.value||+e.value<=0){e.classList.add('err');ok=false}else e.classList.remove('err')});
+  if(!ok)return;
+  const p={L:+jL.value,W:+jW.value,H:+jH.value,wt:+jWT.value};
+  const gt=document.getElementById('jGT').value;
+  let area=null;
+  if(gt==='crawler'&&+jSW.value>0&&+jSL.value>0)area=(+jSW.value*+jSL.value*2)/1e6;
+  if(gt==='tire'&&+jSW.value>0&&+jSL.value>0)area=(+jSW.value*+jSL.value)/1e4;
+  const gp=area?(p.wt/1000)/area:null;
+  const rows=[],msgs=[];
+  CONT.forEach(c=>{
+    let st='ok',why='';
+    if(c.fr){
+      if(p.wt>c.pl){st='ng';why=`重量${(p.wt-c.pl).toLocaleString()}kg超過`}
+      else if(p.W>c.W){st='wr';why=`側方OOG(+${p.W-c.W}mm)。船社承認・陸送の特殊車両通行許可の確認要`}
+      else if(p.H>2585){st='wr';why=`FR上の全高が高く上段積不可の可能性。船社確認要`}
+    }else{
+      if(!c.open&&p.W>c.dW){st='ng';why=`幅が扉口を${p.W-c.dW}mm超過(扉口${c.dW})`}
+      else if(!c.open&&p.H>c.dH){st='ng';why=`高さが扉口を${p.H-c.dH}mm超過(扉口${c.dH})`}
+      else if(p.L>c.L){st='ng';why=`全長${p.L-c.L}mm超過`}
+      else if(p.W>c.W){st='ng';why=`全幅${p.W-c.W}mm超過(内寸${c.W})`}
+      else if(!c.open&&p.H>c.H){st='ng';why=`全高${p.H-c.H}mm超過`}
+      else if(c.open&&p.H>c.H){st='wr';why=`OOG:天面超過+${p.H-c.H}mm。運賃割増・上段積不可`}
+      else if(p.wt>c.pl){st='ng';why=`ペイロード${(p.wt-c.pl).toLocaleString()}kg超過`}
+    }
+    if(st!=='ng'&&gp&&gp>GP_LIMIT&&!c.fr){
+      st=(st==='ok')?'wr':st;
+      why+=(why?' / ':'')+`接地圧${gp.toFixed(1)}t/m²→敷板要 ≥${((p.wt/1000)/GP_LIMIT).toFixed(1)}m²(敷鉄板12mm目安)`;
+    }
+    // v1.1 利用率(重量=wt/Payload、容積=外接直方体/内容積。FRは開放構造のため容積は参考外)
+    const wp=p.wt/c.pl*100;
+    const vol=(p.L*p.W*p.H)/1e9, cvol=(c.L*c.W*c.H)/1e9;
+    const vp=c.fr?null:vol/cvol*100;
+    rows.push({c:c.n,st,wp,vp});
+    if(why)msgs.push({st,txt:`${c.n}:${why}`});
+  });
+  let h='<tr>'+rows.map(r=>`<th>${r.c}</th>`).join('')+'</tr><tr>';
+  h+=rows.map(r=>`<td class="${r.st==='ok'?'ok':r.st==='wr'?'wr':'ng'}">${r.st==='ok'?'◎':r.st==='wr'?'△':'×'}</td>`).join('')+'</tr>';
+  h+='<tr>'+rows.map(r=>`<td class="num" style="font-size:10.5px;color:var(--sub)">${r.st==='ng'?'—':r.wp.toFixed(0)+'%<br>'+(r.vp!==null?r.vp.toFixed(0)+'%':'開放')}</td>`).join('')+'</tr>';
+  document.getElementById('mx').innerHTML=h;
+  const rc=document.getElementById('reasons');
+  rc.innerHTML=msgs.map(m=>`<div class="${m.st==='ng'?'r-ng':'r-wr'}"> ${m.txt}</div>`).join('');
+  if(gp)rc.innerHTML+=`<div class="note">接地圧 ${gp.toFixed(1)} t/m² / 接地面積 ${area.toFixed(2)} m²(敷板閾値 ${GP_LIMIT}t/m²)</div>`;
+  // カタログ参考値のまま判定した場合の注意
+  {const mi2=+document.getElementById('mSel').value;
+   const pl2=mi2>=0?allMachines()[mi2].post[+pSel.value||0]:null;
+   const mk2=machineKey();
+   const measured=mk2&&lastMeasured[mk2];
+   if(pl2&&pl2.lb.includes('参考')&&!measured&&pl2.L===p.L&&pl2.W===p.W&&pl2.H===p.H)
+     rc.innerHTML+='<div class="r-wr">【注意】W21 カタログ参考値のままです。中古機はシュー交換・改造・突起で個体差が出ます。判定確定前に必ず実測値へ差替え(実測ガイド参照)</div>';}
+  // v1.4 クリアランス余裕度(標準コンテナで搭載可の型式ごとに余裕を表示)
+  let clearTxt='';
+  CONT.filter(c=>!c.fr&&!c.open).forEach(c=>{
+    const r=rows.find(x=>x.c===c.n);
+    if(r&&r.st!=='ng')clearTxt+=`<b>${c.n}</b>:幅余裕${c.dW-p.W}mm/高さ余裕${c.dH-p.H}mm `;
+  });
+  // 推奨型式の最小余裕で帯判定
+  const bestStd=CONT.filter(c=>!c.fr&&!c.open).map(c=>rows.find(x=>x.c===c.n)).find(r=>r&&r.st!=='ng');
+  let minClear=null;
+  if(bestStd){
+    const bc=CONT.find(c=>c.n===bestStd.c);
+    minClear=Math.min(bc.dW-p.W,bc.dH-p.H);
+    const band=minClear>50?['r-ok','【OK】余裕十分。通常オペで搭載可']:minClear>=20?['r-wr','【注意】タイト。熟練オペ+誘導2名・低速で。再実測推奨']:['r-ng','【NG】余裕20mm未満。姿勢変更・分解を推奨(強行時は現場責任者判断)'];
+    rc.innerHTML+=`<div class="${band[0]}">${bestStd.c}の最小クリアランス(逃げ) <b>${minClear}mm</b> — ${band[1]}<br><span style="font-size:11px">${clearTxt}</span></div>`;
+  }
+  rc.innerHTML+=`<div id="passStats"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn ghost" style="margin:0" onclick="logResult('ok')">実績:通った</button>
+      <button class="btn ghost" style="margin:0" onclick="logResult('ng')">実績:中止した</button>
+    </div>`;
+  rc.innerHTML+=`<div class="note">下段=重量利用率/M3利用率(機体外接寸法基準)・FRは開放構造のため非表示 / 判定は実測値前提・実機寸法はCSCプレート確認</div>`;
+  const best=rows.find(r=>r.st==='ok')||rows.find(r=>r.st==='wr');
+  // v1.1 残枠アドバイス
+  if(best&&!CONT.find(c=>c.n===best.c).fr){
+    const bc=CONT.find(c=>c.n===best.c);
+    const remW=bc.pl-p.wt, remV=(bc.L*bc.W*bc.H)/1e9-(p.L*p.W*p.H)/1e9;
+    if(remW>1000&&remV>3)
+      rc.innerHTML+=`<div class="r-ok">【提案】積載率改善:${best.c}なら残枠 <b>約${(remW/1000).toFixed(1)}t / 約${remV.toFixed(0)}m³</b>。アタッチメント・予備部品・工具の相積みを検討(積付タブで片荷確認。インボイス/P.リストへの記載を忘れずに)</div>`;
+  }
+  if(best)rc.innerHTML+=`<div class="r-ok">【OK】推奨:<b>${best.c}</b>${best.st==='wr'?'(条件付き)':''}が最安候補。特殊コンテナしか選べない場合は分解姿勢を追加登録し、②損益タブで比較。</div>`;
+  else rc.innerHTML+=`<div class="r-in">全型式不可。分解パターンの追加登録か、RORO船/重量物船を検討(比較機能はv2)。</div>`;
+  document.getElementById('resultCard').style.display='block';
+  const mi=+document.getElementById('mSel').value;
+  lastJudge={name:mi>=0?allMachines()[mi].name:'手入力',pos:mi>=0?allMachines()[mi].post[+pSel.value]?.lb:'-',p,rows,gp,minClear};
+  // v1.4 実測値を機械別に保存(前回値呼出し用)
+  const mk=machineKey();
+  if(mk){lastMeasured[mk]={L:p.L,W:p.W,H:p.H,wt:p.wt,sw:+jSW.value||0,sl:+jSL.value||0};store("vanning-measured",lastMeasured)}
+  renderPassStats();
+  // 分解費をマスタから損益タブへ連携
+  if(mi>=0&&allMachines()[mi].dis){c3.value=allMachines()[mi].dis;c4.value=allMachines()[mi].asm}
+  document.getElementById('resultCard').scrollIntoView({behavior:'smooth'});
+}
+
+/* ===== ②損益 ===== */
+function pl(){
+  const std=+c1.value,fr=+c2.value,dis=+c3.value,asm=+c4.value,d=+c5.value,dc=+c6.value;
+  const a=std+dis+asm+d*dc,b=fr;
+  const no=document.getElementById('noAsm').checked;
+  const bep=dis+asm+d*dc;
+  let rec,diff=Math.abs(a-b);
+  if(no)rec={n:"特殊コンテナ(FR/OT)",why:"仕向地で再組立不可のため分解案は選択不可(撤退条件該当)"};
+  else rec=(a<b)?{n:"分解して標準コンテナ",why:`差額${diff}万円有利。損益分岐:運賃差が${bep}万円以上なら分解が有利`}
+              :{n:"特殊コンテナ(FR/OT)",why:`差額${diff}万円有利。分解費を${bep-(b-std)>0?(bep-(b-std)):0}万円圧縮できれば逆転`};
+  document.getElementById('plOut').innerHTML=
+   `<div class="verdict" style="background:${(no||a>=b)?'var(--warnbg)':'var(--okbg)'}">
+    推奨:<span class="big">${rec.n}</span><br>
+    <span class="num">分解案 ${a}万円(運賃${std}+分解${dis}+組立${asm}+遅延${d*dc}) / 特殊案 ${b}万円</span><br>${rec.why}</div>
+    <div class="note">前提:関税・保険・国内横持ちは両案共通として除外。運賃は都度見積の概算値。</div>`;
+  lastPL={a,b,rec:rec.n};
+}
+
+/* ===== ③混載 ===== */
+function renderCargos(){
+  const l=document.getElementById('cargoList'),s=document.getElementById('cargoSel');
+  l.innerHTML=cargos.length?cargos.map((c,i)=>
+    `<div class="cargorow"><span class="sw" style="background:${CG_COLORS[i%6]}">${String.fromCharCode(65+i)}</span>
+     <span style="flex:1">${c.n}${c.vol?`<br><span class="note num" style="margin:0">${c.vol.toFixed(1)}m³</span>`:''}</span><span class="num">${c.wt.toLocaleString()}kg</span>
+     <span class="badge">${c.ord}番デバン</span>
+     <button class="del" onclick="delCargo(${i})">✕</button></div>`).join('')
+   :'<div class="note">貨物が未登録です。下の欄から追加してください。</div>';
+  s.innerHTML=cargos.map((c,i)=>`<option value="${i+1}">${String.fromCharCode(65+i)}:${c.n}</option>`).join('');
+}
+function addCargo(){
+  const n=cgName.value.trim(),wt=+cgWt.value,ord=+cgOrd.value;
+  const vL=+cgL.value||0,vW=+cgW.value||0,vH=+cgH.value||0;
+  if(!n||!wt||!ord){alert('貨物名・重量・降ろし順を入力してください');return}
+  if(cargos.length>=6){alert('相積みは6口までです');return}
+  const vol=(vL&&vW&&vH)?(vL*vW*vH)/1e9:0; // m³(未入力は0=容積計算から除外)
+  cargos.push({n,wt,ord,vol,dH:vH||0});
+  cgName.value='';cgWt.value='';cgOrd.value='';cgL.value='';cgW.value='';cgH.value='';
+  store("vanning-cargos",cargos);renderCargos();drawBay();
+}
+function delCargo(i){
+  cargos.splice(i,1);bayState=bayState.map(v=>v===i+1?0:(v>i+1?v-1:v));
+  store("vanning-cargos",cargos);renderCargos();drawBay();
+}
+function drawBay(){
+  const b=document.getElementById('bay');b.innerHTML='';
+  bayState.forEach((v,i)=>{
+    const st=v?`style="background:${CG_COLORS[(v-1)%6]};color:#fff;border-style:solid"`:'';
+    b.innerHTML+=`<div class="cell" ${st} onclick="tap(${i})">${v?String.fromCharCode(64+v):i+1}</div>`;
+  });
+  calcMix();
+}
+function tap(i){const s=+document.getElementById('cargoSel').value;if(!s)return;bayState[i]=(bayState[i]===s)?0:s;drawBay()}
+function clearBay(){bayState=Array(10).fill(0);drawBay()}
+function calcMix(){
+  const c=CONT[+document.getElementById('mixCont').value];
+  const IL=c.L,seg=IL/10,lim=IL*CG_RATIO,segLim=c.pl/10*2;
+  document.getElementById('cgLimLbl').textContent=`重心位置(${c.n}・許容:中央±${lim.toFixed(0)}mm)`;
+  let tw=0,mx=0,segWt=Array(10).fill(0);
+  bayState.forEach((v,i)=>{if(v&&cargos[v-1]){
+    const per=cargos[v-1].wt/bayState.filter(x=>x===v).length;
+    tw+=per;mx+=per*(i+0.5)*seg;segWt[i]+=per}});
+  const out=document.getElementById('mixOut');let h='';
+  document.getElementById('cgZone').style.left=((IL/2-lim)/IL*100)+'%';
+  document.getElementById('cgZone').style.width=(lim*2/IL*100)+'%';
+  if(tw===0){out.innerHTML='<div class="r-in">貨物を積み付けると片荷・警告を表示します。</div>';document.getElementById('cgPin').style.left='50%';return}
+  const cg=mx/tw,off=cg-IL/2;
+  document.getElementById('cgPin').style.left=(cg/IL*100)+'%';
+  if(Math.abs(off)>lim)h+=`<div class="r-ng">【NG】E02 片荷:${off>0?'ドア':'妻'}側に<b>${Math.abs(off).toFixed(0)}mm</b>(許容${lim.toFixed(0)}mm)。重量物を中央寄りへ移動。</div>`;
+  else h+=`<div class="r-ok">【OK】片荷なし:偏心 <b>${Math.abs(off).toFixed(0)}mm</b>(許容${lim.toFixed(0)}mm内)</div>`;
+  // LIFO(エッジケース:降ろし順が早い=扉側にあるべき)
+  const pos={};bayState.forEach((v,i)=>{if(v)pos[v]=Math.max(pos[v]??-1,i)});
+  const keys=Object.keys(pos);
+  keys.forEach(a=>keys.forEach(b=>{
+    if(cargos[a-1].ord<cargos[b-1].ord&&pos[a]<pos[b])
+      h+=`<div class="r-wr">【注意】W02 ${cargos[a-1].n}(${cargos[a-1].ord}番デバン)が${cargos[b-1].n}より妻側。デバン時に仮移動が発生。</div>`;
+  }));
+  // 区画集中荷重(エッジケース4)
+  segWt.forEach((w,i)=>{if(w>segLim)h+=`<div class="r-wr">【注意】区画${i+1}に${(w/1000).toFixed(1)}tが集中(目安${(segLim/1000).toFixed(1)}t/区画超)。敷板で前後区画へ荷重分散を。</div>`});
+  h+= tw>c.pl?`<div class="r-ng">【NG】合計${tw.toLocaleString()}kgが${c.n}ペイロード(${c.pl.toLocaleString()}kg)超過</div>`
+            :`<div class="r-in">【情報】I01 VGM用貨物合算 <b>${tw.toLocaleString()}kg</b> — 実機タレ・ダンネージは船積タブの船積情報に入力するとVGM確定値を算出</div>`;
+  // v1.1 積載率(配置済み貨物のみ集計。容積は寸法入力済み貨物のみ)
+  const placed=[...new Set(bayState.filter(v=>v))];
+  const cv=(c.L*c.W*c.H)/1e9;
+  let tv=0,volKnown=true;
+  placed.forEach(v=>{const cg=cargos[v-1];if(cg){if(cg.vol)tv+=cg.vol;else volKnown=false}});
+  const wpct=(tw/c.pl*100).toFixed(0);
+  let vline=volKnown&&placed.length?`M3 <b>${tv.toFixed(1)} / ${cv.toFixed(1)}m³(${(tv/cv*100).toFixed(0)}%)</b>・残<b>${(cv-tv).toFixed(1)}m³</b>`:`M3 <b>—</b>(寸法未入力の貨物あり)`;
+  h+=`<div class="r-in">積載率:重量 <b>${tw.toLocaleString()} / ${c.pl.toLocaleString()}kg(${wpct}%)</b>・残<b>${((c.pl-tw)/1000).toFixed(1)}t</b> / ${vline}</div>`;
+  if(volKnown&&placed.length&&(c.pl-tw)>1000&&(cv-tv)>3&&(tv/cv)<0.6)
+    h+=`<div class="r-ok">【提案】残枠に相積み余地あり。同一仕向地の部品・アタッチメント追加で実質運賃単価を低減可(書類記載を忘れずに)</div>`;
+  out.innerHTML=h;
+  drawSide(c);genSeq();
+}
+
+/* ===== v1.2 側面2Dビュー(SVG) ===== */
+function cargoRuns(){ // 連続する同一貨物の区画をまとめる → [{v,from,to}]
+  const runs=[];let cur=null;
+  bayState.forEach((v,i)=>{
+    if(v&&cur&&cur.v===v&&cur.to===i-1){cur.to=i}
+    else{if(cur&&cur.v)runs.push(cur);cur=v?{v,from:i,to:i}:null}
+  });
+  if(cur&&cur.v)runs.push(cur);
+  return runs;
+}
+function drawSide(c){
+  const W=1000,Hpx=210,pad=6;
+  const xs=(W-pad*2)/c.L, ys=(Hpx-pad*2)/c.H;
+  let s=`<svg viewBox="0 0 ${W} ${Hpx+18}" style="width:100%;background:#F5F5F5;border:1px solid var(--line);border-radius:8px">`;
+  s+=`<rect x="${pad}" y="${pad}" width="${W-pad*2}" height="${Hpx-pad*2}" fill="none" stroke="#1A1A1A" stroke-width="3"/>`;
+  s+=`<line x1="${W-pad}" y1="${pad}" x2="${W-pad}" y2="${Hpx-pad}" stroke="#1A1A1A" stroke-width="6"/>`; // 扉
+  cargoRuns().forEach(r=>{
+    const cg=cargos[r.v-1];if(!cg)return;
+    const x=pad+r.from*(c.L/10)*xs, w=((r.to-r.from+1)*(c.L/10))*xs;
+    const hh=Math.min(cg.dH||c.H*0.5,c.H)*ys;
+    const dash=cg.dH?'':'stroke-dasharray="8 5"';
+    s+=`<rect x="${x+2}" y="${Hpx-pad-hh}" width="${w-4}" height="${hh}" fill="${CG_COLORS[(r.v-1)%6]}" opacity=".85" stroke="#fff" stroke-width="2" ${dash}/>`;
+    s+=`<text x="${x+w/2}" y="${Hpx-pad-hh/2+7}" text-anchor="middle" fill="#fff" font-size="24" font-weight="800">${String.fromCharCode(64+r.v)}</text>`;
+  });
+  s+=`<text x="${pad}" y="${Hpx+14}" font-size="15" fill="#666">◀ 妻側</text><text x="${W-pad}" y="${Hpx+14}" font-size="15" fill="#1A1A1A" text-anchor="end">ドア ▶</text>`;
+  s+=`</svg>`;
+  document.getElementById('sideView').innerHTML=s;
+}
+
+/* ===== v1.2 積込手順の自動生成(奥から順) ===== */
+function genSeq(){
+  const el=document.getElementById('seqOut');
+  const runs=cargoRuns();
+  if(!runs.length){el.innerHTML='<div class="r-in">積み付けると、妻側から順のバンニング手順を自動生成します。</div>';return}
+  // 積込順=物理的に奥(区画番号が小さい)に置く貨物から
+  const byCargo={};runs.forEach(r=>{const b=byCargo[r.v]=byCargo[r.v]||{v:r.v,min:99,max:-1};b.min=Math.min(b.min,r.from);b.max=Math.max(b.max,r.to)});
+  const order=Object.values(byCargo).sort((a,b)=>a.min-b.min);
+  let n=0,h=`<div class="r-in">準備:敷板・ダンネージ・ラッシング材を扉横に用意。床・貨物の洗浄状態を確認</div>`;
+  order.forEach(o=>{
+    const cg=cargos[o.v-1];n++;
+    h+=`<div class="r-in"><b>手順${n}</b>:${String.fromCharCode(64+o.v)} ${cg.n}(${cg.wt.toLocaleString()}kg)を区画${o.min+1}〜${o.max+1}へ配置 → 固縛して<b>写真撮影</b>(時刻入り・会社別)</div>`;
+  });
+  h+=`<div class="r-in">最終:全体ラッシング確認 → VGM確定 → 扉閉鎖・シール番号記録・シール写真</div>`;
+  h+=`<div class="r-wr">【注意】積込順と降ろし順が両立しない箇所は上の警告(W02)を参照。矛盾がある場合はデバン側と仮移動の合意を取ってから積むこと</div>`;
+  el.innerHTML=h;
+  window._seq=order.map((o,i)=>`手順${i+1}: ${cargos[o.v-1].n} → 区画${o.min+1}〜${o.max+1}`);
+}
+
+/* ===== ⑤マスタ編集 ===== */
+let editIdx=-1;
+function renderMList(){
+  const l=document.getElementById('mList');
+  const all=allMachines();
+  const groups={};
+  all.forEach((m,i)=>{const g=m.preset?(m.maker||'その他'):'自社登録';(groups[g]=groups[g]||[]).push([i,m])});
+  let html='';
+  Object.keys(groups).sort((a,b)=>(a==='自社登録'?-1:b==='自社登録'?1:0)).forEach(g=>{
+    html+='<div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#444;background:#EDEDED;padding:6px 8px;margin-top:10px;border-radius:3px">'+g+'('+groups[g].length+')</div>';
+    html+=groups[g].map(([i,m])=>{
+      const u=!m.preset;
+      return '<div class="mrow"><div><b>'+m.name+'</b> '+(m.preset?'<span class="badge">参考値</span>':'')+'<br>'+
+        '<span class="note">'+m.post.map(p=>p.lb).join(' / ')+'</span></div>'+
+        '<div class="acts">'+
+        (u?'<button onclick="editMachine('+i+')">編集</button>':'')+
+        '<button onclick="dupMachine('+i+')">複製</button>'+
+        (u?'<button class="d" onclick="quickDel('+i+')">削除</button>':'')+
+        '</div></div>';
+    }).join('');
+  });
+  l.innerHTML=html;
+}
+function postRowHtml(p,idx){
+  p=p||{lb:'',L:'',W:'',H:'',wt:'',gt:'crawler',sw:'',sl:''};
+  return `<div class="postrow" data-i="${idx}">
+    <div class="posthead"><b>荷姿 ${idx+1}</b><button class="del" style="background:none;border:none;color:var(--ng);cursor:pointer" onclick="this.closest('.postrow').remove()">✕ 削除</button></div>
+    <label>荷姿ラベル</label><input class="pp-lb" value="${p.lb}" placeholder="例:そのまま/アーム下げ/CW+アーム分解">
+    <div class="grid3">
+      <div><label>L (mm)</label><input type="number" class="pp-L num" value="${p.L}"></div>
+      <div><label>W (mm)</label><input type="number" class="pp-W num" value="${p.W}"></div>
+      <div><label>H (mm)</label><input type="number" class="pp-H num" value="${p.H}"></div>
+    </div>
+    <div class="grid2">
+      <div><label>重量 (kg)</label><input type="number" class="pp-wt num" value="${p.wt}"></div>
+      <div><label>接地タイプ</label>
+        <select class="pp-gt"><option value="crawler" ${p.gt==='crawler'?'selected':''}>履帯</option>
+        <option value="tire" ${p.gt==='tire'?'selected':''}>タイヤ</option>
+        <option value="none" ${p.gt==='none'?'selected':''}>判定しない</option></select></div>
+      <div><label>シュー幅/輪数</label><input type="number" class="pp-sw num" value="${p.sw||''}"></div>
+      <div><label>接地長/輪面積cm²</label><input type="number" class="pp-sl num" value="${p.sl||''}"></div>
+    </div>
+  </div>`;
+}
+function editMachine(i){
+  editIdx=i;
+  const m=i>=0?allMachines()[i]:null;
+  document.getElementById('mmTitle').textContent=m?`${m.name} を編集`:'機種を登録';
+  document.getElementById('mmName').value=m?m.name:'';
+  document.getElementById('mmMaker').value=m?(m.maker||''):'';
+  document.getElementById('mmDis').value=m?m.dis:'';
+  document.getElementById('mmAsm').value=m?m.asm:'';
+  document.getElementById('mmPosts').innerHTML=(m?m.post:[null]).map((p,x)=>postRowHtml(p,x)).join('');
+  document.getElementById('mmDel').style.display=(m&&!m.preset)?'block':'none';
+  document.getElementById('mModal').classList.add('on');
+}
+function addPostRow(){
+  const c=document.querySelectorAll('#mmPosts .postrow').length;
+  if(c>=3){alert('荷姿は最大3パターンです');return}
+  document.getElementById('mmPosts').insertAdjacentHTML('beforeend',postRowHtml(null,c));
+}
+function saveMachine(){
+  const name=document.getElementById('mmName').value.trim();
+  if(!name){alert('機種名を入力してください');return}
+  const posts=[...document.querySelectorAll('#mmPosts .postrow')].map(r=>({
+    lb:r.querySelector('.pp-lb').value.trim()||'姿勢',
+    L:+r.querySelector('.pp-L').value,W:+r.querySelector('.pp-W').value,
+    H:+r.querySelector('.pp-H').value,wt:+r.querySelector('.pp-wt').value,
+    gt:r.querySelector('.pp-gt').value,
+    sw:+r.querySelector('.pp-sw').value||0,sl:+r.querySelector('.pp-sl').value||0
+  })).filter(p=>p.L&&p.W&&p.H&&p.wt);
+  if(!posts.length){alert('少なくとも1荷姿の寸法・重量を入力してください');return}
+  const m={id:"u"+Date.now(),name,maker:document.getElementById('mmMaker').value.trim()||'',dis:+document.getElementById('mmDis').value||0,
+    asm:+document.getElementById('mmAsm').value||0,preset:false,post:posts};
+  const pi=editIdx-PRESETS.length;
+  if(editIdx>=0&&pi>=0)userMachines[pi]=m; else userMachines.push(m);
+  store("vanning-machines",userMachines);
+  closeModal();renderMList();renderMachineSel();
+}
+function dupMachine(i){
+  const s=JSON.parse(JSON.stringify(allMachines()[i]));
+  s.id="u"+Date.now();s.name=s.name+"(コピー)";s.preset=false;
+  userMachines.push(s);store("vanning-machines",userMachines);
+  renderMList();renderMachineSel();
+}
+function quickDel(i){
+  const pi=i-PRESETS.length;if(pi<0)return;
+  if(!confirm(`「${userMachines[pi].name}」を削除しますか?`))return;
+  userMachines.splice(pi,1);store("vanning-machines",userMachines);
+  renderMList();renderMachineSel();
+}
+function deleteMachine(){quickDel(editIdx);closeModal()}
+function closeModal(){document.getElementById('mModal').classList.remove('on')}
+
+/* ===== v1.3 船積情報と実機値再判定 ===== */
+const SI_IDS=['siLine','siPOD','siCnee','siFwd','siTel','siVsl','siBkg','siDoc','siCut','siCntr','siSeal','siMG','siTare','siDun'];
+function saveCase(){
+  const o={type:document.getElementById('siType').value};
+  SI_IDS.forEach(id=>o[id]=document.getElementById(id).value);
+  store("vanning-case",o);
+}
+async function loadCase(){
+  const o=await load("vanning-case");if(!o)return;
+  if(o.type)document.getElementById('siType').value=o.type;
+  SI_IDS.forEach(id=>{if(o[id]!==undefined)document.getElementById(id).value=o[id]});
+}
+function mixCargoWeight(){
+  let tw=0;bayState.forEach(v=>{if(v&&cargos[v-1])tw+=cargos[v-1].wt/bayState.filter(x=>x===v).length});
+  return tw;
+}
+function checkActual(){
+  saveCase();
+  const c=CONT[+document.getElementById('siType').value];
+  const mg=+document.getElementById('siMG').value,tare=+document.getElementById('siTare').value;
+  const dun=+document.getElementById('siDun').value||0;
+  const el=document.getElementById('siOut');let h='';
+  if(!mg||!tare){el.innerHTML='<div class="r-in">Max Grossとタレ(CSCプレート記載値)を入力すると、実機ペイロードで再判定します。</div>';return}
+  const apl=mg-tare, diff=apl-c.pl;
+  h+=`<div class="r-in">実機ペイロード <b>${apl.toLocaleString()}kg</b>(Max Gross ${mg.toLocaleString()} − タレ ${tare.toLocaleString()})/ 標準値${c.pl.toLocaleString()}kgとの差 <b>${diff>=0?'+':''}${diff.toLocaleString()}kg</b></div>`;
+  // 判定タブの機械重量と照合
+  if(lastJudge){
+    const w=lastJudge.p.wt;
+    h+= w>apl?`<div class="r-ng">【NG】判定済み機種 ${w.toLocaleString()}kg が実機ペイロードを${(w-apl).toLocaleString()}kg超過。この個体には積めません。コンテナ差替えを船社へ要請</div>`
+            :`<div class="r-ok">【OK】判定済み機種 ${w.toLocaleString()}kg ≦ 実機ペイロード(余裕${(apl-w).toLocaleString()}kg)</div>`;
+  }
+  // 混載合算と照合+VGM確定値
+  const tw=mixCargoWeight();
+  if(tw){
+    h+= tw+dun>apl?`<div class="r-ng">【NG】混載合算${tw.toLocaleString()}kg+ダンネージ${dun.toLocaleString()}kg が実機ペイロードを${(tw+dun-apl).toLocaleString()}kg超過</div>`
+                 :`<div class="r-ok">【OK】混載合算+ダンネージ ${(tw+dun).toLocaleString()}kg ≦ 実機ペイロード(余裕${(apl-tw-dun).toLocaleString()}kg)</div>`;
+    h+=`<div class="r-in"><b>VGM確定値 ${(tw+dun+tare).toLocaleString()}kg</b>(貨物${tw.toLocaleString()}+ダンネージ${dun.toLocaleString()}+タレ${tare.toLocaleString()})— Method2(合算)申告用。Max Gross ${mg.toLocaleString()}kg以内であることを確認済み${tw+dun+tare<=mg?'':'→ <b style="color:var(--ng)">超過!要是正</b>'}</div>`;
+  }
+  el.innerHTML=h;
+  window._actual={apl,mg,tare,dun};
+}
+function buildReport(){
+  saveCase();
+  const d=new Date().toLocaleDateString('ja-JP');
+  let t=`━━ バンニングレポート ${d} ━━\n`;
+  // v1.3 船積情報(入力済み項目のみ)
+  const si=[["船社",'siLine'],["船名/Voy",'siVsl'],["仕向港",'siPOD'],["荷受人",'siCnee'],["乙仲",'siFwd'],["乙仲TEL",'siTel'],["Booking",'siBkg'],["書類カット",'siDoc'],["CYカット",'siCut'],["コンテナNo",'siCntr'],["シールNo",'siSeal']]
+    .filter(([,id])=>document.getElementById(id).value)
+    .map(([lb,id])=>` ${lb}: ${document.getElementById(id).value}`);
+  if(si.length)t+=`\n【船積情報】\n${si.join('\n')}\n`;
+  if(window._actual){
+    t+=` 実機ペイロード ${window._actual.apl.toLocaleString()}kg(MaxGross ${window._actual.mg.toLocaleString()}/タレ ${window._actual.tare.toLocaleString()})\n`;
+    const tw=mixCargoWeight();
+    if(tw)t+=` VGM確定値 ${(tw+window._actual.dun+window._actual.tare).toLocaleString()}kg(貨物${tw.toLocaleString()}+ダンネージ${window._actual.dun.toLocaleString()}+タレ${window._actual.tare.toLocaleString()})\n`;
+  }
+  if(lastJudge){
+    t+=`\n【判定】${lastJudge.name}(${lastJudge.pos})\n 寸法 W${lastJudge.p.W}×H${lastJudge.p.H}×L${lastJudge.p.L}mm / ${lastJudge.p.wt.toLocaleString()}kg\n`;
+    lastJudge.rows.forEach(r=>t+=` ${r.c}: ${r.st==='ok'?'◎':r.st==='wr'?'△':'×'}\n`);
+    if(lastJudge.gp)t+=` 接地圧 ${lastJudge.gp.toFixed(1)} t/m²(閾値${GP_LIMIT})\n`;
+    if(lastJudge.minClear!==null&&lastJudge.minClear!==undefined)t+=` 最小クリアランス(逃げ) ${lastJudge.minClear}mm(${lastJudge.minClear>50?'緑:余裕十分':lastJudge.minClear>=20?'黄:タイト・熟練オペ':'赤:姿勢変更推奨'})\n`;
+  }
+  if(lastPL)t+=`\n【損益】推奨=${lastPL.rec}\n 分解案${lastPL.a}万円 / 特殊案${lastPL.b}万円\n`;
+  const c=CONT[+document.getElementById('mixCont').value];
+  let tw=0;bayState.forEach(v=>{if(v&&cargos[v-1])tw+=cargos[v-1].wt/bayState.filter(x=>x===v).length});
+  if(tw){
+    const cv=(c.L*c.W*c.H)/1e9;
+    let tv=0;[...new Set(bayState.filter(v=>v))].forEach(v=>{if(cargos[v-1]&&cargos[v-1].vol)tv+=cargos[v-1].vol});
+    t+=`\n【混載/${c.n}】貨物合算 ${tw.toLocaleString()}kg(重量利用率${(tw/c.pl*100).toFixed(0)}%${tv?` / M3利用率${(tv/cv*100).toFixed(0)}%`:''})\n 配置:[${bayState.map(v=>v?String.fromCharCode(64+v):'-').join('')}](左=奥/右=扉)\n`;
+    cargos.forEach((cg,i)=>t+=` ${String.fromCharCode(65+i)}:${cg.n} ${cg.wt.toLocaleString()}kg${cg.vol?` ${cg.vol.toFixed(1)}m³`:''}(${cg.ord}番デバン)\n`);
+    if(window._seq&&window._seq.length){
+      t+=`\n【バンニング手順】\n 準備:敷板・ダンネージ・ラッシング材の用意、洗浄確認\n`;
+      window._seq.forEach(s=>t+=` ${s} → 固縛・写真\n`);
+      t+=` 最終:全体ラッシング確認 → VGM確定 → 扉閉鎖・シール番号記録\n`;
+    }
+  }
+  t+=`\n【船積前チェック】\n □残燃料1/4以下 □バッテリーマイナス端子外し・絶縁\n □高圧洗浄・泥/種子落とし(豪NZ向け検疫は特に厳格)\n □ラッシング完了写真(会社別・時刻入り)\n □VGM確定方法(Method1実測/Method2合算)\n □バンニング業者の積付承認\n\n※本判定は入力実測値前提の机上計算。コンテナ実寸はCSCプレートで確認。\n※ラッシング設計・最終積付の責任はバンニング業者/フォワーダー承認による。`;
+  document.getElementById('rep').textContent=t;
+}
+function copyRep(){
+  buildReport();
+  const txt=document.getElementById('rep').textContent;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(showToast).catch(()=>fallbackCopy(txt));
+  }else fallbackCopy(txt);
+}
+function fallbackCopy(txt){
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);
+  ta.select();document.execCommand('copy');document.body.removeChild(ta);showToast();
+}
+function showToast(){const to=document.getElementById('toast');to.classList.add('show');setTimeout(()=>to.classList.remove('show'),1500)}
+
+init();
+</script>
+</body>
+</html>
